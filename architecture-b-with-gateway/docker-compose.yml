@@ -129,6 +129,18 @@ services:
     networks:
       - gateway-network
 
+  # Frontend Web Application
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - kong-gateway
+    networks:
+      - gateway-network
+
 volumes:
   kong-data:
 

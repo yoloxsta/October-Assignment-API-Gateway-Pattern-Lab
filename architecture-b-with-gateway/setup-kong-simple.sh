@@ -49,6 +49,7 @@ curl -s -X POST "$KONG_ADMIN_URL/services/user-service/routes" \
   -d "name=user-login" \
   -d "paths[]=/login" \
   -d "methods[]=POST" \
+  -d "methods[]=OPTIONS" \
   -d "strip_path=false" > /dev/null 2>&1 && echo "  OK: /login" || echo "  SKIP: /login"
 
 curl -s -X POST "$KONG_ADMIN_URL/services/user-service/routes" \
@@ -69,12 +70,14 @@ curl -s -X POST "$KONG_ADMIN_URL/services/order-service/routes" \
   -d "name=order-list" \
   -d "paths[]=/orders" \
   -d "methods[]=GET" \
+  -d "methods[]=OPTIONS" \
   -d "strip_path=false" > /dev/null 2>&1 && echo "  OK: /orders" || echo "  SKIP: /orders"
 
 curl -s -X POST "$KONG_ADMIN_URL/services/order-service/routes" \
   -d "name=order-create" \
   -d "paths[]=/orders" \
   -d "methods[]=POST" \
+  -d "methods[]=OPTIONS" \
   -d "strip_path=false" > /dev/null 2>&1 && echo "  OK: POST /orders" || echo "  SKIP: POST /orders"
 
 # Product Service Routes
@@ -92,7 +95,22 @@ curl -s -X POST "$KONG_ADMIN_URL/services/product-service/routes" \
   -d "strip_path=false" > /dev/null 2>&1 && echo "  OK: /products/:id" || echo "  SKIP: /products/:id"
 
 echo ""
-echo "=== Adding Plugins ==="
+echo "=== Adding CORS Plugin ==="
+
+curl -s -X POST "$KONG_ADMIN_URL/plugins" \
+  -d "name=cors" \
+  -d "config.origins[]=*" \
+  -d "config.methods[]=GET" \
+  -d "config.methods[]=POST" \
+  -d "config.methods[]=PUT" \
+  -d "config.methods[]=PATCH" \
+  -d "config.methods[]=DELETE" \
+  -d "config.methods[]=OPTIONS" \
+  -d "config.headers[]=Content-Type" \
+  -d "config.headers[]=Authorization" \
+  -d "config.headers[]=apikey" \
+  -d "config.exposed_headers[]=*" \
+  -d "config.credentials=true" > /dev/null 2>&1 && echo "  OK" || echo "  Already exists"
 
 # Global Rate Limiting
 echo "Adding global rate limiting (100 req/min)..."

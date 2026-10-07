@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Gateway Demo - Frontend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .api-url {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .api-url code {
+            background: #f5f5f5;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .login-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .login-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #5a6268;
+        }
+        
+        .result {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .result.error {
+            border-left-color: #dc3545;
+            background: #ffe6e6;
+        }
+        
+        .result.success {
+            border-left-color: #28a745;
+            background: #e6ffe6;
+        }
+        
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .user-info {
+            background: #e6f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .user-info strong {
+            color: #667eea;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+        
+        .badge.success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .badge.pending {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 API Gateway Demo - Frontend</h1>
+            <div class="api-url">
+                <strong>API Gateway:</strong> <code>http://localhost:8000</code> | 
+                <strong>Konga UI:</strong> <code>http://localhost:1337</code>
+            </div>
+        </header>
+
+        <!-- Login Section -->
+        <div class="login-section">
+            <h2>🔐 Login</h2>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" value="alice@example.com" placeholder="Enter email">
+            </div>
+            <button onclick="login()">Login</button>
+            <button onclick="logout()" class="secondary">Logout</button>
+            <div id="user-info" class="user-info" style="display:none;">
+                Logged in as: <strong id="user-email"></strong>
+            </div>
+            <div id="login-result"></div>
+        </div>
+
+        <div class="grid">
+            <!-- Products Card -->
+            <div class="card">
+                <h2>📦 Products (Public - No Auth)</h2>
+                <button onclick="getProducts()">Get Products</button>
+                <div id="products-result"></div>
+            </div>
+
+            <!-- Users Card -->
+            <div class="card">
+                <h2>👥 Users (Requires Token)</h2>
+                <button onclick="getUsers()" id="btn-users" disabled>Get Users</button>
+                <p style="color: #999; font-size: 12px; margin-top: 10px;">Login first to enable this button</p>
+                <div id="users-result"></div>
+            </div>
+
+            <!-- Orders Card -->
+            <div class="card">
+                <h2>🛒 Orders (Requires API Key)</h2>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="apikey">API Key:</label>
+                    <input type="text" id="apikey" value="new-api-key-2026" placeholder="Enter API key">
+                </div>
+                <button onclick="getOrders()">Get Orders</button>
+                <div id="orders-result"></div>
+            </div>
+        </div>
+
+        <!-- Architecture Info -->
+        <div class="card">
+            <h2>ℹ️ Architecture B - With API Gateway</h2>
+            <table>
+                <tr>
+                    <th>Feature</th>
+                    <th>Implementation</th>
+                </tr>
+                <tr>
+                    <td><strong>Single Entry Point</strong></td>
+                    <td>All requests go through <code>localhost:8000</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Rate Limiting</strong></td>
+                    <td>Gateway handles (100 req/min)</td>
+                </tr>
+                <tr>
+                    <td><strong>Authentication</strong></td>
+                    <td>Gateway validates API keys</td>
+                </tr>
+                <tr>
+                    <td><strong>Services</strong></td>
+                    <td>Hidden behind gateway (not exposed)</td>
+                </tr>
+                <tr>
+                    <td><strong>Code</strong></td>
+                    <td>Services have NO auth/rate-limit code</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let token = null;
+        let user = null;
+
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            const className = isError ? 'result error' : 'result success';
+            element.innerHTML = `
+                <div class="${className}">
+                    <strong>${isError ? '❌ Error' : '✅ Success'}</strong>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        function showLoading(elementId) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = '<div class="result"><span class="loading"></span> Loading...</div>';
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            showLoading('login-result');
+            
+            try {
+                const response = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    token = data.token;
+                    user = data.user;
+                    
+                    document.getElementById('user-info').style.display = 'block';
+                    document.getElementById('user-email').textContent = user.email;
+                    document.getElementById('btn-users').disabled = false;
+                    
+                    showResult('login-result', data);
+                } else {
+                    showResult('login-result', data, true);
+                }
+            } catch (error) {
+                showResult('login-result', { error: error.message }, true);
+            }
+        }
+
+        function logout() {
+            token = null;
+            user = null;
+            document.getElementById('user-info').style.display = 'none';
+            document.getElementById('btn-users').disabled = true;
+            document.getElementById('login-result').innerHTML = '';
+            document.getElementById('users-result').innerHTML = '';
+        }
+
+        async function getProducts() {
+            showLoading('products-result');
+            
+            try {
+                const response = await fetch(`${API_URL}/products`);
+                const data = await response.json();
+                
+                showResult('products-result', data);
+            } catch (error) {
+                showResult('products-result', { error: error.message }, true);
+            }
+        }
+
+        async function getUsers() {
+            if (!token) {
+                showResult('users-result', { error: 'Please login first' }, true);
+                return;
+            }
+            
+            showLoading('users-result');
+            
+            try {
+                const response = await fetch(`${API_URL}/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                showResult('users-result', data);
+            } catch (error) {
+                showResult('users-result', { error: error.message }, true);
+            }
+        }
+
+        async function getOrders() {
+            const apikey = document.getElementById('apikey').value;
+            
+            if (!apikey) {
+                showResult('orders-result', { error: 'Please enter API key' }, true);
+                return;
+            }
+            
+            showLoading('orders-result');
+            
+            try {
+                const response = await fetch(`${API_URL}/orders`, {
+                    headers: { 'apikey': apikey }
+                });
+                const data = await response.json();
+                
+                showResult('orders-result', data);
+            } catch (error) {
+                showResult('orders-result', { error: error.message }, true);
+            }
+        }
+    </script>
+</body>
+</html>
