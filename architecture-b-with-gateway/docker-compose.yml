@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # Kong Database
+  kong-database:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kongpass
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kong-data:/var/lib/postgresql/data
+    networks:
+      - gateway-network
+
+  # Kong Migration (runs once to setup DB)
+  kong-migration:
+    image: kong:latest
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+      KONG_PG_DATABASE: kong
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - gateway-network
+
+  # Kong Gateway
+  kong-gateway:
+    image: kong:latest
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+      KONG_PG_DATABASE: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+    ports:
+      - "8000:8000"  # Proxy
+      - "8001:8001"  # Admin API
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gateway-network
+
+  # User Service (simplified - no rate limiting, no auth logic)
+  user-service:
+    build: ./services/user-service
+    environment:
+      - PORT=3001
+      - SERVICE_NAME=user-service
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Order Service (simplified - no rate limiting, no auth logic)
+  order-service:
+    build: ./services/order-service
+    environment:
+      - PORT=3002
+      - SERVICE_NAME=order-service
+      - USER_SERVICE_URL=http://user-service:3001
+    expose:
+      - "3002"
+    depends_on:
+      - user-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Product Service (simplified - no rate limiting, no auth logic)
+  product-service:
+    build: ./services/product-service
+    environment:
+      - PORT=3003
+      - SERVICE_NAME=product-service
+    expose:
+      - "3003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Konga - Kong Admin UI
+  konga:
+    image: pantsel/konga:latest
+    environment:
+      NODE_ENV: development
+    ports:
+      - "1337:1337"
+    depends_on:
+      - kong-gateway
+    networks:
+      - gateway-network
+
+volumes:
+  kong-data:
+
+networks:
+  gateway-network:
+    name: arch-b-network

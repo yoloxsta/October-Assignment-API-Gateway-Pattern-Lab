@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # User Service
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - SERVICE_NAME=user-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Order Service
+  order-service:
+    build: ./services/order-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - SERVICE_NAME=order-service
+      - USER_SERVICE_URL=http://user-service:3001
+    depends_on:
+      - user-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Product Service
+  product-service:
+    build: ./services/product-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - SERVICE_NAME=product-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    name: arch-a-network
