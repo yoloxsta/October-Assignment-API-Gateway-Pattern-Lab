@@ -56,6 +56,7 @@ curl -s -X POST "$KONG_ADMIN_URL/services/user-service/routes" \
   -d "name=user-list" \
   -d "paths[]=/users" \
   -d "methods[]=GET" \
+  -d "methods[]=OPTIONS" \
   -d "strip_path=false" > /dev/null 2>&1 && echo "  OK: /users" || echo "  SKIP: /users"
 
 # Order Service Routes
