@@ -261,6 +261,14 @@
                 <div id="products-result"></div>
             </div>
 
+            <!-- Product 2 Card -->
+            <div class="card">
+                <h2>📦 Product 2 (Requires JWT Token)</h2>
+                <button onclick="getProducts2()" id="btn-products2">Get Product 2</button>
+                <p style="color: #999; font-size: 12px; margin-top: 10px;">Login first to get JWT token</p>
+                <div id="products-2-result"></div>
+            </div>
+
             <!-- Users Card -->
             <div class="card">
                 <h2>👥 Users (Requires Token)</h2>
@@ -383,6 +391,26 @@
                 showResult('products-result', data);
             } catch (error) {
                 showResult('products-result', { error: error.message }, true);
+            }
+        }
+
+        async function getProducts2() {
+            if (!token) {
+                showResult('products-2-result', { error: 'Please login first to get JWT token' }, true);
+                return;
+            }
+            
+            showLoading('products-2-result');
+            
+            try {
+                const response = await fetch(`${API_URL}/products-2`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                showResult('products-2-result', data);
+            } catch (error) {
+                showResult('products-2-result', { error: error.message }, true);
             }
         }
 

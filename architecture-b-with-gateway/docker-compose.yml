@@ -117,6 +117,22 @@ services:
     networks:
       - gateway-network
 
+  # Product 2 Service (new service for testing)
+  product-2-service:
+    build: ./services/product-2-service
+    environment:
+      - PORT=3004
+      - SERVICE_NAME=product-2-service
+    expose:
+      - "3004"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
   # Konga - Kong Admin UI
   konga:
     image: pantsel/konga:latest

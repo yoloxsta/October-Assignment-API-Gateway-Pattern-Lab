@@ -1,10 +1,14 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(express.json());
+
+// JWT Secret (must match Kong consumer secret)
+const JWT_SECRET = 'shared-secret-key';
 
 // Simulated user database
 const users = [
@@ -23,7 +27,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Login - generates token (in real app, gateway would forward to auth service)
+// Login - generates JWT token
 app.post('/login', (req, res) => {
   const { email } = req.body;
   
@@ -35,8 +39,15 @@ app.post('/login', (req, res) => {
     });
   }
   
-  // Simple token (in real app, use JWT or OAuth)
-  const token = `token-${user.id}-${Date.now()}`;
+  // Generate JWT token
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { 
+      expiresIn: '1h',
+      issuer: 'user-service'
+    }
+  );
   
   res.json({
     user: { id: user.id, name: user.name, email: user.email },
