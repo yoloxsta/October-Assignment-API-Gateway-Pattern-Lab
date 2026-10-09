@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # User Service
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - ORDER_SERVICE_URL=http://order-service:3002
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - communication-lab
+
+  # Order Service
+  order-service:
+    build: ./services/order-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - PRODUCT_SERVICE_URL=http://product-service:3003
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - communication-lab
+
+  # Product Service
+  product-service:
+    build: ./services/product-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - communication-lab
+
+networks:
+  communication-lab:
+    name: communication-lab-network
