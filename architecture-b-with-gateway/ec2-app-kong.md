@@ -264,6 +264,20 @@ sudo systemctl start nginx
 
 ### 4.2 Configure Nginx for Domains
 
+Create frontend directory:
+
+```bash
+# Create frontend directory
+sudo mkdir -p /var/www/frontend
+
+# Copy frontend files from project
+sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
+
+# Set permissions
+sudo chown -R www-data:www-data /var/www/frontend
+sudo chmod -R 755 /var/www/frontend
+```
+
 Create configuration for frontend:
 
 ```bash
@@ -279,6 +293,12 @@ server {
 
     root /var/www/frontend;
     index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml;
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -650,30 +670,7 @@ sudo tail -f /var/log/nginx/error.log
 
 ## Step 6: Deploy on EC2
 
-### 6.1 Prepare Frontend Files
-
-```bash
-# Create frontend directory
-sudo mkdir -p /var/www/frontend
-
-# Copy frontend files (from your project)
-sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
-
-# Set permissions
-sudo chown -R www-data:www-data /var/www/frontend
-sudo chmod -R 755 /var/www/frontend
-```
-
-### 6.2 Update Frontend API URL
-
-Edit `/var/www/frontend/app.js`:
-
-```javascript
-// Update API URL to use Kong domain
-const API_URL = 'https://kong.example.com';
-```
-
-### 6.3 Deploy Services
+### 6.1 Deploy Services
 
 ```bash
 cd ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway
@@ -688,7 +685,7 @@ docker-compose -f docker-compose.prod.yml ps
 docker-compose -f docker-compose.prod.yml logs -f
 ```
 
-### 6.4 Run Kong Setup
+### 6.2 Run Kong Setup
 
 ```bash
 # Make script executable
@@ -1239,45 +1236,6 @@ You now have:
 **Optional:** Nginx reverse proxy for additional security layer (included in guide).
 
 Your API is accessible at: `https://testing.example.com`
-
----
-
-## Alternative: Use AWS Certificate Manager (ACM)
-
-If you prefer AWS-managed SSL certificates:
-
-### 1. Request ACM Certificate
-
-```bash
-# Via AWS Console:
-# 1. Go to AWS Certificate Manager
-# 2. Request a certificate
-# 3. Add domains: frontend.example.com, kong.example.com
-# 4. Choose DNS validation
-# 5. Add CNAME records to Route 53
-```
-
-### 2. Use Application Load Balancer
-
-```bash
-# Create ALB with:
-# - HTTPS listener on port 443
-# - ACM certificate attached
-# - Target group pointing to EC2 on port 80
-
-# Route 53 points to ALB instead of EC2 IP
-```
-
-**Pros:**
-- Managed SSL certificates
-- Auto-renewal by AWS
-- Load balancing
-- Health checks
-
-**Cons:**
-- Additional cost (~$20/month for ALB)
-- More complex setup
-- Requires ALB between Route 53 and EC2
 
 ---
 
