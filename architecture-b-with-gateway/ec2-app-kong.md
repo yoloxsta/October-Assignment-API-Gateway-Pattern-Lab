@@ -103,7 +103,7 @@ Security Flow:
 ### 2. Domain and DNS
 
 - Domain registered (e.g., `example.com`)
-- Cloudflare account configured for the domain
+- AWS Route 53 hosted zone configured
 - Subdomains to be used:
   - `frontend.example.com` - Frontend web application
   - `kong.example.com` - API Gateway
@@ -112,6 +112,7 @@ Security Flow:
 
 - SSH client
 - Git
+- AWS CLI (optional, for Route 53 management)
 
 ---
 
@@ -159,83 +160,219 @@ cd app-architecture-lab/api-gateway-lab/architecture-b-with-gateway
 
 ---
 
-## Step 2: Configure Cloudflare DNS
+## Step 2: Configure Route 53 DNS
 
-### 2.1 Add DNS Records
+### 2.1 Create Hosted Zone (if not exists)
 
-1. Log in to Cloudflare Dashboard
-2. Select your domain (`example.com`)
-3. Go to **DNS** → **Records**
-4. Add two **A Records**:
+1. Log in to AWS Console
+2. Go to **Route 53** → **Hosted zones**
+3. Click **Create hosted zone**
+4. Enter domain name: `example.com`
+5. Type: **Public hosted zone**
+6. Click **Create**
 
-   **Record 1 - Frontend:**
-   ```
-   Type: A
-   Name: frontend
-   IPv4 address: YOUR-EC2-ELASTIC-IP
-   Proxy status: Proxied (orange cloud)
-   TTL: Auto
-   ```
+### 2.2 Add DNS Records
 
-   **Record 2 - Kong API Gateway:**
-   ```
-   Type: A
-   Name: kong
-   IPv4 address: YOUR-EC2-ELASTIC-IP
-   Proxy status: Proxied (orange cloud)
-   TTL: Auto
-   ```
+In your hosted zone, add two **A Records**:
 
-5. Save the records
+**Record 1 - Frontend:**
+```
+Record name: frontend
+Record type: A
+Value: YOUR-EC2-ELASTIC-IP
+TTL: 300
+```
 
-**Result:**
-- `frontend.example.com` → Frontend Web Application
-- `kong.example.com` → Kong API Gateway
+**Record 2 - Kong API Gateway:**
+```
+Record name: kong
+Record type: A
+Value: YOUR-EC2-ELASTIC-IP
+TTL: 300
+```
 
-### 2.2 Configure SSL/TLS
+### 2.3 Update Domain Nameservers (if needed)
 
-1. Go to **SSL/TLS** → **Overview**
-2. Set encryption mode to **Full (Strict)**
+If your domain is not registered with AWS:
 
-This ensures:
-- Cloudflare handles HTTPS from client
-- Cloudflare connects to EC2 via HTTPS or HTTP (your choice)
+1. Copy the 4 nameservers from Route 53 hosted zone
+2. Go to your domain registrar (GoDaddy, Namecheap, etc.)
+3. Update nameservers to point to AWS Route 53
+
+**Wait 24-48 hours for DNS propagation**
+
+### 2.4 Verify DNS Resolution
+
+```bash
+# Test DNS resolution
+nslookup frontend.example.com
+nslookup kong.example.com
+
+# Or use dig
+dig frontend.example.com
+dig kong.example.com
+```
 
 ---
 
 ## Step 3: Choose Deployment Strategy
 
-You have two options:
+You have two options for SSL/TLS:
 
-### Option A: Cloudflare Direct to Kong (Recommended for simplicity)
-
-```
-Client → Cloudflare (HTTPS) → Kong:8000
-         frontend.example.com
-         kong.example.com
-```
-
-**No Nginx required**. Cloudflare handles SSL and connects directly to services.
-
-### Option B: Nginx as Reverse Proxy (More control)
+### Option A: Let's Encrypt on Host Nginx (Recommended)
 
 ```
-Client → Cloudflare (HTTPS) → Nginx:80 → Kong:8000 or Frontend
-         frontend.example.com → Nginx → /var/www/frontend
-         kong.example.com → Nginx → Kong:8000
+Client → Route 53 → Nginx (Host:80/443) → Kong:8000 or Frontend
 ```
 
 **Benefits:**
-- Additional security layer
-- Can serve static files
-- Better SSL termination control
-- Can load balance multiple Kong instances
+- Free SSL certificates
+- Automatic renewal via Certbot
+- Full control over Nginx configuration
+
+### Option B: AWS Certificate Manager (ACM) + ALB
+
+```
+Client → Route 53 → ALB (HTTPS) → EC2 (HTTP)
+```
+
+**Benefits:**
+- Managed SSL certificates
+- Load balancing capabilities
+- Health checks
+
+**Note:** This guide uses **Option A (Let's Encrypt)** for simplicity and cost-effectiveness.
 
 ---
 
-## Step 4: Configure Kong for Production
+## Step 4: Install and Configure Nginx with SSL
 
-### 4.1 Create Production docker-compose.yml
+### 4.1 Install Nginx and Certbot
+
+```bash
+# Install Nginx
+sudo apt update
+sudo apt install nginx -y
+
+# Install Certbot
+sudo apt install certbot python3-certbot-nginx -y
+
+# Enable Nginx
+sudo systemctl enable nginx
+sudo systemctl start nginx
+```
+
+### 4.2 Configure Nginx for Domains
+
+Create configuration for frontend:
+
+```bash
+sudo nano /etc/nginx/sites-available/frontend.example.com
+```
+
+Add:
+
+```nginx
+server {
+    listen 80;
+    server_name frontend.example.com;
+
+    root /var/www/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+Create configuration for Kong:
+
+```bash
+sudo nano /etc/nginx/sites-available/kong.example.com
+```
+
+Add:
+
+```nginx
+server {
+    listen 80;
+    server_name kong.example.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+Enable sites:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/frontend.example.com /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/kong.example.com /etc/nginx/sites-enabled/
+
+# Remove default site
+sudo rm /etc/nginx/sites-enabled/default
+
+# Test configuration
+sudo nginx -t
+
+# Reload Nginx
+sudo systemctl reload nginx
+```
+
+### 4.3 Obtain SSL Certificates
+
+```bash
+# Get certificate for frontend
+sudo certbot --nginx -d frontend.example.com
+
+# Get certificate for Kong
+sudo certbot --nginx -d kong.example.com
+
+# Test auto-renewal
+sudo certbot renew --dry-run
+```
+
+Certbot will automatically:
+- Obtain Let's Encrypt certificates
+- Configure Nginx for HTTPS
+- Set up auto-renewal (via systemd timer)
+
+### 4.4 Verify HTTPS
+
+```bash
+# Test frontend
+curl -I https://frontend.example.com
+
+# Test Kong
+curl -I https://kong.example.com/health
+```
+
+You should see `HTTP/2 200` response.
+
+---
+
+## Step 5: Configure Kong for Production
+
+### 5.1 Create Production docker-compose.yml
 
 Create a file `docker-compose.prod.yml`:
 
@@ -509,55 +646,57 @@ sudo tail -f /var/log/nginx/error.log
 
 ---
 
-### 4.3 Configure Frontend for Production
+---
 
-Update `frontend/app.js` to use the Kong API domain:
+## Step 6: Deploy on EC2
+
+### 6.1 Prepare Frontend Files
+
+```bash
+# Create frontend directory
+sudo mkdir -p /var/www/frontend
+
+# Copy frontend files (from your project)
+sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
+
+# Set permissions
+sudo chown -R www-data:www-data /var/www/frontend
+sudo chmod -R 755 /var/www/frontend
+```
+
+### 6.2 Update Frontend API URL
+
+Edit `/var/www/frontend/app.js`:
 
 ```javascript
-// Update this line in frontend/app.js
+// Update API URL to use Kong domain
 const API_URL = 'https://kong.example.com';
 ```
 
-**Note:** Replace `kong.example.com` with your actual domain.
+### 6.3 Deploy Services
 
-Create `frontend-nginx.conf`:
+```bash
+cd ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway
 
-```nginx
-server {
-    listen 80;
-    server_name localhost;
-    root /usr/share/nginx/html;
-    index index.html;
+# Start all services
+docker-compose -f docker-compose.prod.yml up -d
 
-    # Gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml;
+# Check status
+docker-compose -f docker-compose.prod.yml ps
 
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Main app
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Health check
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-}
+# View logs
+docker-compose -f docker-compose.prod.yml logs -f
 ```
 
----
+### 6.4 Run Kong Setup
 
-### 4.4 Create Production Setup Script
+```bash
+# Make script executable
+chmod +x setup-kong-prod.sh
+
+# Run setup
+./setup-kong-prod.sh
+```
 
 Create a file `setup-kong-prod.sh`:
 
@@ -772,9 +911,9 @@ chmod +x setup-kong-prod.sh
 
 ---
 
-## Step 6: Test Your Deployment
+## Step 7: Test Your Deployment
 
-### 6.1 Basic API Tests
+### 7.1 Basic API Tests
 
 ```bash
 # Test from EC2 instance
@@ -785,7 +924,21 @@ curl http://localhost:8000/products
 curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 ```
 
-### 6.2 Test Frontend
+### 7.2 Test HTTPS Endpoints
+
+```bash
+# Test frontend
+curl -I https://frontend.example.com
+
+# Test Kong API
+curl https://kong.example.com/health
+curl https://kong.example.com/products
+
+# Test with API key
+curl -H "apikey: my-secret-api-key-123" https://kong.example.com/orders
+```
+
+### 7.3 Test Frontend
 
 1. Open browser and go to: `https://frontend.example.com`
 2. You should see the frontend application
@@ -796,12 +949,7 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
    - ✅ View Orders with API key (Order Service)
    - ✅ View Product-2 with JWT (Product-2 Service)
 
-### 6.3 Test API Endpoints from Browser
-
-1. Open: `https://kong.example.com/health`
-2. You should see user service health response
-
-### 6.4 Complete End-to-End Test
+### 7.4 Complete End-to-End Test
 
 **Test User Flow:**
 
@@ -833,7 +981,7 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
    - Click "Get Product-2" button
    - Should show product-2 data
 
-### 6.5 Test API Endpoints via curl
+### 7.5 Test API Endpoints via curl
 
 ```bash
 # From your local machine
@@ -848,7 +996,7 @@ curl -X POST https://kong.example.com/login \
   -d '{"email":"alice@example.com"}'
 ```
 
-### 6.6 Access Konga UI
+### 7.6 Access Konga UI
 
 1. Open: `http://your-ec2-ip:1337`
 2. Create admin user
@@ -858,23 +1006,28 @@ curl -X POST https://kong.example.com/login \
 
 ---
 
-## Step 7: Production Checklist
+## Step 8: Production Checklist
 
 ### Security
 
 - [ ] Change all default passwords (JWT secret, API keys)
-- [ ] Enable Cloudflare SSL (Full Strict mode)
+- [ ] SSL certificates installed and auto-renewing
 - [ ] Configure firewall to allow only necessary ports
-  - Port 80 (HTTP) - Cloudflare IPs only
-  - Port 443 (HTTPS) - Cloudflare IPs only
-  - Port 3000 (Frontend) - Public access OR restrict to specific IPs
+  - Port 80 (HTTP) - For Certbot challenges
+  - Port 443 (HTTPS) - Public access
+  - Port 22 (SSH) - Your IP only
   - Port 8001 (Kong Admin) - Localhost only
   - Port 1337 (Konga) - Your IP only or VPN
-  - Port 22 (SSH) - Your IP only
 - [ ] Set up EC2 security groups properly
-- [ ] Enable Cloudflare bot protection
 - [ ] Review and limit CORS origins in Kong plugins
 - [ ] Use environment variables for secrets (create .env file)
+- [ ] Configure UFW firewall on EC2
+  ```bash
+  sudo ufw allow 22
+  sudo ufw allow 80
+  sudo ufw allow 443
+  sudo ufw enable
+  ```
 
 ### Monitoring
 
@@ -898,7 +1051,7 @@ curl -X POST https://kong.example.com/login \
 
 ---
 
-## Step 8: Troubleshooting
+## Step 9: Troubleshooting
 
 ### Common Issues
 
@@ -937,18 +1090,29 @@ docker exec -it kong-database psql -U kong -d kong -c "SELECT 1;"
 
 ```bash
 # Test DNS resolution
-nslookup testing.example.com
-dig testing.example.com
+nslookup frontend.example.com
+nslookup kong.example.com
 
-# Check Cloudflare DNS settings
-# Ensure A record points to correct IP
+# Check Route 53 records
+# Ensure A records point to correct EC2 IP
+# Wait for DNS propagation (up to 48 hours)
 ```
 
-**5. SSL/HTTPS issues**
+**5. SSL certificate errors**
 
-- Verify Cloudflare SSL mode is set to "Full (Strict)"
-- Check if Cloudflare is proxying (orange cloud enabled)
-- Review Cloudflare SSL/TLS settings
+```bash
+# Check certificate status
+sudo certbot certificates
+
+# Renew certificates manually
+sudo certbot renew
+
+# Check Nginx configuration
+sudo nginx -t
+
+# View Nginx error logs
+sudo tail -f /var/log/nginx/error.log
+```
 
 **6. CORS errors**
 
@@ -1031,6 +1195,9 @@ docker-compose -f docker-compose.prod.yml up -d
 
 # Update system packages
 sudo apt update && sudo apt upgrade -y
+
+# Renew SSL certificates (automatic, but can test)
+sudo certbot renew --dry-run
 ```
 
 ---
@@ -1075,73 +1242,42 @@ Your API is accessible at: `https://testing.example.com`
 
 ---
 
-## Alternative: Serve Frontend via Nginx on Host
+## Alternative: Use AWS Certificate Manager (ACM)
 
-If you prefer to serve the frontend via Host Nginx instead of Docker:
+If you prefer AWS-managed SSL certificates:
 
-### Configure Nginx for Frontend
-
-```bash
-# Create frontend directory
-sudo mkdir -p /var/www/frontend
-
-# Copy frontend files
-sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
-
-# Update Nginx config
-sudo nano /etc/nginx/sites-available/kong
-```
-
-**Updated Nginx Config:**
-
-```nginx
-# Frontend
-server {
-    listen 80;
-    server_name frontend.example.com;
-
-    root /var/www/frontend;
-    index index.html;
-
-    # Gzip
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
-
-    # Cache
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-
-# API Gateway
-server {
-    listen 80;
-    server_name kong.example.com;
-
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+### 1. Request ACM Certificate
 
 ```bash
-# Test and restart
-sudo nginx -t
-sudo systemctl restart nginx
+# Via AWS Console:
+# 1. Go to AWS Certificate Manager
+# 2. Request a certificate
+# 3. Add domains: frontend.example.com, kong.example.com
+# 4. Choose DNS validation
+# 5. Add CNAME records to Route 53
 ```
 
-Now your application is accessible at:
-- Frontend: `https://frontend.example.com`
-- API Gateway: `https://kong.example.com`
+### 2. Use Application Load Balancer
+
+```bash
+# Create ALB with:
+# - HTTPS listener on port 443
+# - ACM certificate attached
+# - Target group pointing to EC2 on port 80
+
+# Route 53 points to ALB instead of EC2 IP
+```
+
+**Pros:**
+- Managed SSL certificates
+- Auto-renewal by AWS
+- Load balancing
+- Health checks
+
+**Cons:**
+- Additional cost (~$20/month for ALB)
+- More complex setup
+- Requires ALB between Route 53 and EC2
 
 ---
 
