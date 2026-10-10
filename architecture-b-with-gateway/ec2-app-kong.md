@@ -262,57 +262,9 @@ sudo systemctl enable nginx
 sudo systemctl start nginx
 ```
 
-### 4.2 Configure Nginx for Domains
+### 4.2 Configure Nginx for Kong
 
-Create frontend directory:
-
-```bash
-# Create frontend directory
-sudo mkdir -p /var/www/frontend
-
-# Copy frontend files from project
-sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
-
-# Set permissions
-sudo chown -R www-data:www-data /var/www/frontend
-sudo chmod -R 755 /var/www/frontend
-```
-
-Create configuration for frontend:
-
-```bash
-sudo nano /etc/nginx/sites-available/frontend.example.com
-```
-
-Add:
-
-```nginx
-server {
-    listen 80;
-    server_name frontend.example.com;
-
-    root /var/www/frontend;
-    index index.html;
-
-    # Gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-Create configuration for Kong:
+Create configuration for Kong API Gateway:
 
 ```bash
 sudo nano /etc/nginx/sites-available/kong.example.com
@@ -341,6 +293,38 @@ server {
     }
 }
 ```
+
+Create configuration for Frontend (proxies to frontend container):
+
+```bash
+sudo nano /etc/nginx/sites-available/frontend.example.com
+```
+
+Add:
+
+```nginx
+server {
+    listen 80;
+    server_name frontend.example.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+**Note:** The frontend is served by the `frontend` Docker container (port 3000). Nginx on the host proxies traffic to this container.
 
 Enable sites:
 
