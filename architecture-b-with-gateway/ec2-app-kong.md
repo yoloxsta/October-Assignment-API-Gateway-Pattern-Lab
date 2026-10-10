@@ -15,49 +15,80 @@ This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with c
 │    (Browser)     │
 └────────┬─────────┘
          │
-         ├───── https://frontend.example.com (Frontend Web App)
+         ├─────────────────────────────────┐
+         │                                 │
+         ▼                                 ▼
+┌─────────────────────────┐    ┌─────────────────────────┐
+│  https://frontend.      │    │  https://kong.          │
+│  example.com            │    │  example.com            │
+│  (Frontend Web App)     │    │  (API Gateway)          │
+└────────┬────────────────┘    └────────┬────────────────┘
+         │                              │
+         │                              │
+         └──────────┬───────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────────────┐
+│         Cloudflare DNS + SSL                 │
+│  • DDoS Protection                           │
+│  • WAF (Web Application Firewall)            │
+│  • SSL/TLS Termination                       │
+│  • Caching & CDN                             │
+└────────┬─────────────────────────────────────┘
          │
-         └───── https://kong.example.com (API Gateway)
-                │
-                ▼
-┌──────────────────────────┐
-│   Cloudflare DNS         │
-│   + SSL Certificates     │
-└────────┬─────────────────┘
-         │ Proxy through Cloudflare
+         │ Proxy (HTTP)
          │
          ▼
-┌──────────────────────────┐
-│   AWS EC2 Instance       │
-│   Ubuntu 22.04 LTS       │
-│                          │
-│   ┌──────────────────┐   │
-│   │  Frontend (Nginx)│   │
-│   │  Port 80/3000    │   │
-│   └──────────────────┘   │
-│                          │
-│   ┌──────────────────┐   │
-│   │  Kong Gateway    │   │
-│   │  Port 8000       │   │
-│   │  Port 8443 (SSL) │   │
-│   └─────┬────────────┘   │
-│         │                │
-│   ┌─────┴────────────┐   │
-│   │  Docker Network  │   │
-│   │  ┌────────────┐  │   │
-│   │  │ User Svc   │  │   │
-│   │  │ :3001      │  │   │
-│   │  └────────────┘  │   │
-│   │  ┌────────────┐  │   │
-│   │  │ Order Svc  │  │   │
-│   │  │ :3002      │  │   │
-│   │  └────────────┘  │   │
-│   │  ┌────────────┐  │   │
-│   │  │ Product Svc│  │   │
-│   │  │ :3003      │  │   │
-│   │  └────────────┘  │   │
-│   └─────────────────┘   │
-└──────────────────────────┘
+┌──────────────────────────────────────────────┐
+│          AWS EC2 Instance                    │
+│          Ubuntu 22.04 LTS                    │
+│                                              │
+│  ┌────────────────────────────────────────┐ │
+│  │        Docker Network                   │ │
+│  │                                         │ │
+│  │  ┌──────────────────┐  ┌─────────────┐ │ │
+│  │  │  Frontend        │  │ Kong Gateway│ │ │
+│  │  │  (Nginx)         │  │  Port 8000  │ │ │
+│  │  │  Port 80         │  └──────┬──────┘ │ │
+│  │  └──────────────────┘         │        │ │
+│  │                               │        │ │
+│  │         ┌─────────────────────┤        │ │
+│  │         │                     │        │ │
+│  │         ▼                     ▼        │ │
+│  │  ┌────────────┐      ┌─────────────┐  │ │
+│  │  │ PostgreSQL │      │  Micro-     │  │ │
+│  │  │ (Kong DB)  │      │  services   │  │ │
+│  │  │ Port 5432  │      │             │  │ │
+│  │  └────────────┘      │ • User:3001 │  │ │
+│  │                      │ • Order:3002│  │ │
+│  │                      │ • Prod:3003 │  │ │
+│  │                      │ • Prod2:3004│  │ │
+│  │                      └─────────────┘  │ │
+│  │                                        │ │
+│  └────────────────────────────────────────┘ │
+│                                              │
+│  ┌────────────────────────────────────────┐ │
+│  │  Konga UI (Port 1337)                  │ │
+│  │  Kong Admin API (Port 8001)            │ │
+│  └────────────────────────────────────────┘ │
+│                                              │
+└──────────────────────────────────────────────┘
+
+Data Flow:
+==========
+1. User opens frontend.example.com
+2. Frontend loads from Nginx container
+3. Frontend makes API calls to kong.example.com
+4. Kong routes to appropriate microservice
+5. Microservice responds through Kong back to frontend
+
+Security Flow:
+==============
+1. Cloudflare handles HTTPS (SSL/TLS)
+2. Cloudflare DDoS & WAF protection
+3. Kong handles authentication (API Key, JWT)
+4. Kong handles rate limiting (100 req/min)
+5. Services are isolated in Docker network
 ```
 
 ## Prerequisites
@@ -1157,17 +1188,59 @@ You now have a complete end-to-end application:
 **Architecture Flow:**
 
 ```
-User Browser
-     ↓
-https://frontend.example.com (Frontend Web App)
-     ↓
-https://kong.example.com (Kong API Gateway)
-     ↓
-Docker Network (Microservices)
-     ├── User Service (:3001)
-     ├── Order Service (:3002)
-     ├── Product Service (:3003)
-     └── Product-2 Service (:3004)
+┌──────────────────────────────────────────────────────┐
+│                   USER FLOW                          │
+└──────────────────────────────────────────────────────┘
+
+1. User Opens Browser
+   └─> https://frontend.example.com
+
+2. Frontend Loads (Nginx Container)
+   └─> HTML/CSS/JS served from Docker
+
+3. Frontend Makes API Call
+   └─> fetch('https://kong.example.com/products')
+
+4. Request Goes Through Cloudflare
+   └─> SSL termination
+   └─> DDoS protection
+   └─> WAF rules
+
+5. Kong Gateway Receives Request
+   └─> Rate limiting check
+   └─> Authentication check (if required)
+   └─> Route to microservice
+
+6. Microservice Processes Request
+   └─> User Service (:3001)
+   └─> Order Service (:3002)
+   └─> Product Service (:3003)
+   └─> Product-2 Service (:3004)
+
+7. Response Returns Same Path
+   └─> Microservice → Kong → Cloudflare → Frontend → User
+
+
+┌──────────────────────────────────────────────────────┐
+│              SECURITY LAYERS                         │
+└──────────────────────────────────────────────────────┘
+
+Layer 1: Cloudflare (Edge)
+   • HTTPS/SSL
+   • DDoS protection
+   • WAF rules
+   • Geo-blocking (optional)
+
+Layer 2: Kong Gateway (Application)
+   • Rate limiting (100 req/min)
+   • API Key authentication
+   • JWT validation
+   • CORS policies
+
+Layer 3: Docker Network (Infrastructure)
+   • Services not exposed to internet
+   • Internal network isolation
+   • Only Kong port 8000 exposed
 ```
 
 Your application is now production-ready! 🚀
