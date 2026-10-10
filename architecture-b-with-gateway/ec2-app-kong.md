@@ -55,7 +55,7 @@ This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with a
 
 - **Instance Type**: t3.medium (2 vCPU, 4 GB RAM) or larger
 - **OS**: Ubuntu 22.04 LTS
-- **Security Group**: Allow ports 22, 80, 443, 8000, 8443
+- **Security Group**: Allow ports 22, 80, 443, 3000, 8000, 8001, 8443, 1337
 - **Elastic IP**: Recommended for stable IP address
 
 ### 2. Domain and DNS
@@ -305,6 +305,18 @@ services:
       retries: 3
     restart: always
 
+  frontend:
+    image: nginx:alpine
+    container_name: frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - kong-network
+    restart: always
+
   konga:
     image: pantsel/konga:latest
     container_name: konga
@@ -435,7 +447,54 @@ sudo tail -f /var/log/nginx/error.log
 
 ---
 
-### 4.3 Create Production Setup Script
+### 4.3 Configure Frontend for Production
+
+Create `frontend/app.js` (update API endpoint):
+
+```javascript
+const API_BASE_URL = 'https://testing.example.com';
+
+// ... rest of the code
+```
+
+Create `frontend-nginx.conf`:
+
+```nginx
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml;
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Main app
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Health check
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
+```
+
+---
+
+### 4.4 Create Production Setup Script
 
 Create a file `setup-kong-prod.sh`:
 
@@ -606,6 +665,7 @@ echo ""
 echo "=== Kong Setup Complete ==="
 echo ""
 echo "API Gateway URL: https://testing.example.com"
+echo "Frontend URL: https://testing.example.com:3000"
 echo "Kong Admin API: http://localhost:8001"
 echo "Konga UI: http://localhost:1337"
 echo ""
@@ -615,6 +675,9 @@ echo "Test endpoints:"
 echo "  curl https://testing.example.com/health"
 echo "  curl https://testing.example.com/products"
 echo "  curl -H 'apikey: my-secret-api-key-123' https://testing.example.com/orders"
+echo ""
+echo "Open frontend in browser:"
+echo "  https://testing.example.com:3000"
 echo ""
 
 ---
@@ -648,7 +711,7 @@ chmod +x setup-kong-prod.sh
 
 ## Step 6: Test Your Deployment
 
-### 6.1 Basic Tests
+### 6.1 Basic API Tests
 
 ```bash
 # Test from EC2 instance
@@ -659,12 +722,55 @@ curl http://localhost:8000/products
 curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 ```
 
-### 6.2 Test from Browser
+### 6.2 Test Frontend
 
-1. Open browser and go to: `https://testing.example.com/health`
+1. Open browser and go to: `http://your-ec2-ip:3000` or `https://testing.example.com:3000`
+2. You should see the frontend application
+3. Test all features:
+   - ✅ Health check
+   - ✅ Login (User Service)
+   - ✅ View Products (Product Service)
+   - ✅ View Orders with API key (Order Service)
+   - ✅ View Product-2 with JWT (Product-2 Service)
+
+### 6.3 Test API Endpoints from Browser
+
+1. Open: `https://testing.example.com/health`
 2. You should see user service health response
 
-### 6.3 Test API Endpoints
+### 6.4 Complete End-to-End Test
+
+**Test User Flow:**
+
+1. **Open Frontend**
+   ```
+   URL: https://testing.example.com:3000
+   ```
+
+2. **Test Health Check**
+   - Click "Health Check" button
+   - Should show: `{"status":"healthy","service":"user-service"}`
+
+3. **Test Login**
+   - Enter email: `alice@example.com`
+   - Click "Login" button
+   - Should receive JWT token
+
+4. **Test Products**
+   - Click "Get Products" button
+   - Should show product list
+
+5. **Test Orders (requires API key)**
+   - Enter API key: `my-secret-api-key-123`
+   - Click "Get Orders" button
+   - Should show orders list
+
+6. **Test Product-2 (requires JWT)**
+   - Use JWT token from login
+   - Click "Get Product-2" button
+   - Should show product-2 data
+
+### 6.5 Test API Endpoints via curl
 
 ```bash
 # From your local machine
@@ -679,7 +785,7 @@ curl -X POST https://testing.example.com/login \
   -d '{"email":"alice@example.com"}'
 ```
 
-### 6.4 Access Konga UI
+### 6.6 Access Konga UI
 
 1. Open: `http://your-ec2-ip:1337`
 2. Create admin user
@@ -696,9 +802,16 @@ curl -X POST https://testing.example.com/login \
 - [ ] Change all default passwords (JWT secret, API keys)
 - [ ] Enable Cloudflare SSL (Full Strict mode)
 - [ ] Configure firewall to allow only necessary ports
+  - Port 80 (HTTP) - Cloudflare IPs only
+  - Port 443 (HTTPS) - Cloudflare IPs only
+  - Port 3000 (Frontend) - Public access OR restrict to specific IPs
+  - Port 8001 (Kong Admin) - Localhost only
+  - Port 1337 (Konga) - Your IP only or VPN
+  - Port 22 (SSH) - Your IP only
 - [ ] Set up EC2 security groups properly
 - [ ] Enable Cloudflare bot protection
-- [ ] Review and limit CORS origins
+- [ ] Review and limit CORS origins in Kong plugins
+- [ ] Use environment variables for secrets (create .env file)
 
 ### Monitoring
 
@@ -896,3 +1009,131 @@ You now have:
 **Optional:** Nginx reverse proxy for additional security layer (included in guide).
 
 Your API is accessible at: `https://testing.example.com`
+
+---
+
+## Alternative: Serve Frontend via Nginx on Host
+
+If you prefer to serve the frontend via Host Nginx instead of Docker:
+
+### Configure Nginx for Frontend
+
+```bash
+# Create frontend directory
+sudo mkdir -p /var/www/frontend
+
+# Copy frontend files
+sudo cp -r ~/app-architecture-lab/api-gateway-lab/architecture-b-with-gateway/frontend/* /var/www/frontend/
+
+# Update Nginx config
+sudo nano /etc/nginx/sites-available/kong
+```
+
+**Updated Nginx Config:**
+
+```nginx
+# API Gateway
+server {
+    listen 80;
+    server_name testing.example.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Frontend
+server {
+    listen 3000;
+    server_name testing.example.com;
+
+    root /var/www/frontend;
+    index index.html;
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    # Cache
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+```bash
+# Test and restart
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+Now your frontend is accessible at: `https://testing.example.com:3000`
+
+---
+
+## Frontend Integration Checklist
+
+- [ ] Update `API_BASE_URL` in `frontend/app.js` to `https://testing.example.com`
+- [ ] Test all API endpoints from frontend
+- [ ] Verify CORS is configured in Kong
+- [ ] Test login and JWT authentication
+- [ ] Test API key authentication for orders
+- [ ] Verify all buttons work correctly
+- [ ] Check browser console for errors
+- [ ] Test on mobile devices
+
+---
+
+## Quick Reference: All URLs
+
+| Service | URL | Port | Authentication |
+|---------|-----|------|----------------|
+| Frontend | https://testing.example.com:3000 | 3000 | None |
+| API Gateway | https://testing.example.com | 80/443 | Various |
+| Health Check | https://testing.example.com/health | 80/443 | None |
+| Login | https://testing.example.com/login | 80/443 | None |
+| Products | https://testing.example.com/products | 80/443 | None |
+| Orders | https://testing.example.com/orders | 80/443 | API Key |
+| Product-2 | https://testing.example.com/product-2 | 80/443 | JWT |
+| Kong Admin | http://localhost:8001 | 8001 | Localhost only |
+| Konga UI | http://your-ec2-ip:1337 | 1337 | Basic Auth |
+
+---
+
+## Summary
+
+You now have a complete end-to-end application:
+
+✅ **Frontend** - Web application on port 3000  
+✅ **API Gateway** - Kong on port 80/443  
+✅ **Microservices** - User, Order, Product, Product-2  
+✅ **Authentication** - API Key + JWT  
+✅ **Security** - Cloudflare SSL, rate limiting, CORS  
+✅ **Monitoring** - Konga UI for gateway management  
+
+**Architecture Flow:**
+
+```
+User Browser
+     ↓
+https://testing.example.com:3000 (Frontend)
+     ↓
+https://testing.example.com (Kong API Gateway)
+     ↓
+Docker Network (Microservices)
+     ├── User Service (:3001)
+     ├── Order Service (:3002)
+     ├── Product Service (:3003)
+     └── Product-2 Service (:3004)
+```
+
+Your application is now production-ready! 🚀
