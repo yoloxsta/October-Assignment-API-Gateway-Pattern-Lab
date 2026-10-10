@@ -2,7 +2,10 @@
 
 ## Overview
 
-This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with a custom domain (`testing.example.com`) managed by Cloudflare.
+This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with custom domains managed by Cloudflare:
+
+- **Frontend**: `frontend.example.com`
+- **API Gateway**: `kong.example.com`
 
 ## Architecture
 
@@ -11,12 +14,15 @@ This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with a
 │     Client       │
 │    (Browser)     │
 └────────┬─────────┘
-         │ https://testing.example.com
          │
-         ▼
+         ├───── https://frontend.example.com (Frontend Web App)
+         │
+         └───── https://kong.example.com (API Gateway)
+                │
+                ▼
 ┌──────────────────────────┐
 │   Cloudflare DNS         │
-│   + SSL Certificate      │
+│   + SSL Certificates     │
 └────────┬─────────────────┘
          │ Proxy through Cloudflare
          │
@@ -24,6 +30,11 @@ This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with a
 ┌──────────────────────────┐
 │   AWS EC2 Instance       │
 │   Ubuntu 22.04 LTS       │
+│                          │
+│   ┌──────────────────┐   │
+│   │  Frontend (Nginx)│   │
+│   │  Port 80/3000    │   │
+│   └──────────────────┘   │
 │                          │
 │   ┌──────────────────┐   │
 │   │  Kong Gateway    │   │
@@ -62,7 +73,9 @@ This guide shows how to deploy the API Gateway lab on an AWS EC2 instance with a
 
 - Domain registered (e.g., `example.com`)
 - Cloudflare account configured for the domain
-- Subdomain `testing.example.com` will be used
+- Subdomains to be used:
+  - `frontend.example.com` - Frontend web application
+  - `kong.example.com` - API Gateway
 
 ### 3. Local Tools
 
@@ -117,22 +130,36 @@ cd app-architecture-lab/api-gateway-lab/architecture-b-with-gateway
 
 ## Step 2: Configure Cloudflare DNS
 
-### 2.1 Add DNS Record
+### 2.1 Add DNS Records
 
 1. Log in to Cloudflare Dashboard
 2. Select your domain (`example.com`)
 3. Go to **DNS** → **Records**
-4. Add an **A Record**:
+4. Add two **A Records**:
 
+   **Record 1 - Frontend:**
    ```
    Type: A
-   Name: testing
+   Name: frontend
    IPv4 address: YOUR-EC2-ELASTIC-IP
    Proxy status: Proxied (orange cloud)
    TTL: Auto
    ```
 
-5. Save the record
+   **Record 2 - Kong API Gateway:**
+   ```
+   Type: A
+   Name: kong
+   IPv4 address: YOUR-EC2-ELASTIC-IP
+   Proxy status: Proxied (orange cloud)
+   TTL: Auto
+   ```
+
+5. Save the records
+
+**Result:**
+- `frontend.example.com` → Frontend Web Application
+- `kong.example.com` → Kong API Gateway
 
 ### 2.2 Configure SSL/TLS
 
@@ -153,14 +180,18 @@ You have two options:
 
 ```
 Client → Cloudflare (HTTPS) → Kong:8000
+         frontend.example.com
+         kong.example.com
 ```
 
-**No Nginx required**. Cloudflare handles SSL and connects directly to Kong.
+**No Nginx required**. Cloudflare handles SSL and connects directly to services.
 
 ### Option B: Nginx as Reverse Proxy (More control)
 
 ```
-Client → Cloudflare (HTTPS) → Nginx:80 → Kong:8000
+Client → Cloudflare (HTTPS) → Nginx:80 → Kong:8000 or Frontend
+         frontend.example.com → Nginx → /var/www/frontend
+         kong.example.com → Nginx → Kong:8000
 ```
 
 **Benefits:**
@@ -449,13 +480,14 @@ sudo tail -f /var/log/nginx/error.log
 
 ### 4.3 Configure Frontend for Production
 
-Create `frontend/app.js` (update API endpoint):
+Update `frontend/app.js` to use the Kong API domain:
 
 ```javascript
-const API_BASE_URL = 'https://testing.example.com';
-
-// ... rest of the code
+// Update this line in frontend/app.js
+const API_URL = 'https://kong.example.com';
 ```
+
+**Note:** Replace `kong.example.com` with your actual domain.
 
 Create `frontend-nginx.conf`:
 
@@ -597,7 +629,7 @@ echo "Adding global plugins..."
 # CORS Plugin (Global)
 curl -s -X POST "$KONG_ADMIN_URL/plugins" \
   -d "name=cors" \
-  -d "config.origins[*]=https://testing.example.com" \
+  -d "config.origins[*]=https://frontend.example.com" \
   -d "config.methods[]=GET" \
   -d "config.methods[]=POST" \
   -d "config.methods[]=PUT" \
@@ -664,20 +696,20 @@ echo "✓ JWT authentication configured"
 echo ""
 echo "=== Kong Setup Complete ==="
 echo ""
-echo "API Gateway URL: https://testing.example.com"
-echo "Frontend URL: https://testing.example.com:3000"
+echo "Frontend URL: https://frontend.example.com"
+echo "API Gateway URL: https://kong.example.com"
 echo "Kong Admin API: http://localhost:8001"
 echo "Konga UI: http://localhost:1337"
 echo ""
 echo "API Key for orders: my-secret-api-key-123"
 echo ""
 echo "Test endpoints:"
-echo "  curl https://testing.example.com/health"
-echo "  curl https://testing.example.com/products"
-echo "  curl -H 'apikey: my-secret-api-key-123' https://testing.example.com/orders"
+echo "  curl https://kong.example.com/health"
+echo "  curl https://kong.example.com/products"
+echo "  curl -H 'apikey: my-secret-api-key-123' https://kong.example.com/orders"
 echo ""
 echo "Open frontend in browser:"
-echo "  https://testing.example.com:3000"
+echo "  https://frontend.example.com"
 echo ""
 
 ---
@@ -724,7 +756,7 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 
 ### 6.2 Test Frontend
 
-1. Open browser and go to: `http://your-ec2-ip:3000` or `https://testing.example.com:3000`
+1. Open browser and go to: `https://frontend.example.com`
 2. You should see the frontend application
 3. Test all features:
    - ✅ Health check
@@ -735,7 +767,7 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 
 ### 6.3 Test API Endpoints from Browser
 
-1. Open: `https://testing.example.com/health`
+1. Open: `https://kong.example.com/health`
 2. You should see user service health response
 
 ### 6.4 Complete End-to-End Test
@@ -744,7 +776,7 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 
 1. **Open Frontend**
    ```
-   URL: https://testing.example.com:3000
+   URL: https://frontend.example.com
    ```
 
 2. **Test Health Check**
@@ -774,13 +806,13 @@ curl -H "apikey: my-secret-api-key-123" http://localhost:8000/orders
 
 ```bash
 # From your local machine
-curl https://testing.example.com/products
+curl https://kong.example.com/products
 
 # With API key
-curl -H "apikey: my-secret-api-key-123" https://testing.example.com/orders
+curl -H "apikey: my-secret-api-key-123" https://kong.example.com/orders
 
 # Login
-curl -X POST https://testing.example.com/login \
+curl -X POST https://kong.example.com/login \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com"}'
 ```
@@ -895,7 +927,7 @@ curl http://localhost:8001/plugins
 
 # Update CORS if needed
 curl -X PATCH http://localhost:8001/plugins/{plugin-id} \
-  -d "config.origins[*]=https://testing.example.com"
+  -d "config.origins[*]=https://frontend.example.com"
 ```
 
 ### Useful Commands
@@ -1032,24 +1064,10 @@ sudo nano /etc/nginx/sites-available/kong
 **Updated Nginx Config:**
 
 ```nginx
-# API Gateway
-server {
-    listen 80;
-    server_name testing.example.com;
-
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-
 # Frontend
 server {
-    listen 3000;
-    server_name testing.example.com;
+    listen 80;
+    server_name frontend.example.com;
 
     root /var/www/frontend;
     index index.html;
@@ -1068,6 +1086,20 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
+
+# API Gateway
+server {
+    listen 80;
+    server_name kong.example.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
 ```bash
@@ -1076,15 +1108,17 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-Now your frontend is accessible at: `https://testing.example.com:3000`
+Now your application is accessible at:
+- Frontend: `https://frontend.example.com`
+- API Gateway: `https://kong.example.com`
 
 ---
 
 ## Frontend Integration Checklist
 
-- [ ] Update `API_BASE_URL` in `frontend/app.js` to `https://testing.example.com`
+- [ ] Update `API_URL` in `frontend/app.js` to `https://kong.example.com`
 - [ ] Test all API endpoints from frontend
-- [ ] Verify CORS is configured in Kong
+- [ ] Verify CORS is configured in Kong for `https://frontend.example.com`
 - [ ] Test login and JWT authentication
 - [ ] Test API key authentication for orders
 - [ ] Verify all buttons work correctly
@@ -1097,13 +1131,13 @@ Now your frontend is accessible at: `https://testing.example.com:3000`
 
 | Service | URL | Port | Authentication |
 |---------|-----|------|----------------|
-| Frontend | https://testing.example.com:3000 | 3000 | None |
-| API Gateway | https://testing.example.com | 80/443 | Various |
-| Health Check | https://testing.example.com/health | 80/443 | None |
-| Login | https://testing.example.com/login | 80/443 | None |
-| Products | https://testing.example.com/products | 80/443 | None |
-| Orders | https://testing.example.com/orders | 80/443 | API Key |
-| Product-2 | https://testing.example.com/product-2 | 80/443 | JWT |
+| Frontend | https://frontend.example.com | 80/443 | None |
+| API Gateway | https://kong.example.com | 80/443 | Various |
+| Health Check | https://kong.example.com/health | 80/443 | None |
+| Login | https://kong.example.com/login | 80/443 | None |
+| Products | https://kong.example.com/products | 80/443 | None |
+| Orders | https://kong.example.com/orders | 80/443 | API Key |
+| Product-2 | https://kong.example.com/product-2 | 80/443 | JWT |
 | Kong Admin | http://localhost:8001 | 8001 | Localhost only |
 | Konga UI | http://your-ec2-ip:1337 | 1337 | Basic Auth |
 
@@ -1125,9 +1159,9 @@ You now have a complete end-to-end application:
 ```
 User Browser
      ↓
-https://testing.example.com:3000 (Frontend)
+https://frontend.example.com (Frontend Web App)
      ↓
-https://testing.example.com (Kong API Gateway)
+https://kong.example.com (Kong API Gateway)
      ↓
 Docker Network (Microservices)
      ├── User Service (:3001)
