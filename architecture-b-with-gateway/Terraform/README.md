@@ -2,35 +2,46 @@
 
 This Terraform configuration creates an EC2 instance with a security group for running Kong API Gateway and microservices.
 
-## Architecture
+## Architecture - Hybrid Style
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│              AWS VPC (Existing)                         │
-│              vpc-1d815474                               │
-│                                                         │
-│  ┌─────────────────────────┐   ┌─────────────────────┐│
-│  │  Kong Security Group    │   │  Web Security Group ││
-│  │  - Port 22   (SSH)      │   │  - Port 22   (SSH)  ││
-│  │  - Port 80   (HTTP)     │   │  - Port 80   (HTTP) ││
-│  │  - Port 443  (HTTPS)    │   │  - Port 443  (HTTPS)││
-│  │  - Port 3000 (Frontend) │   └─────────────────────┘│
-│  │  - Port 8000 (Kong)     │            │              │
-│  │  - Port 8001 (Kong Adm) │            ▼              │
-│  │  - Port 8443 (Kong SSL) │   ┌─────────────────────┐│
-│  │  - Port 1337 (Konga)    │   │  Web Server EC2     ││
-│  └─────────────────────────┘   │  - t3.micro         ││
-│            │                    │  - Ubuntu 26.04 LTS ││
-│            ▼                    │  - 8 GB gp3 volume  ││
-│  ┌─────────────────────────┐   │  - Key: soetintaung ││
-│  │  Kong API Gateway EC2   │   └─────────────────────┘│
-│  │  - t3.micro             │                            │
-│  │  - Ubuntu 26.04 LTS     │                            │
-│  │  - 8 GB gp3 volume      │                            │
-│  │  - Key: soetintaung     │                            │
-│  └─────────────────────────┘                            │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    AWS VPC (Existing)                           │
+│                    vpc-1d815474                                 │
+│                                                                 │
+│  ┌─────────────────────────────┐   ┌─────────────────────────┐│
+│  │  Kong Security Group        │   │  Common Servers SG      ││
+│  │  (Special Server)           │   │  (Dynamic - Multiple)   ││
+│  │  - Port 22   (SSH)          │   │  - Port 22   (SSH)      ││
+│  │  - Port 80   (HTTP)         │   │  - Port 80   (HTTP)     ││
+│  │  - Port 443  (HTTPS)        │   │  - Port 443  (HTTPS)    ││
+│  │  - Port 3000 (Frontend)     │   │  - Custom ports per     ││
+│  │  - Port 8000 (Kong)         │   │    server               ││
+│  │  - Port 8001 (Kong Admin)   │   └─────────────────────────┘│
+│  │  - Port 8443 (Kong SSL)     │            │                 │
+│  │  - Port 1337 (Konga)        │            ▼                 │
+│  └─────────────────────────────┘   ┌─────────────────────────┐│
+│            │                        │  Common Server EC2s     ││
+│            ▼                        │  (Dynamic - Add more    ││
+│  ┌─────────────────────────────┐   │   in terraform.tfvars)  ││
+│  │  Kong API Gateway EC2       │   │                         ││
+│  │  (Special - Custom Config)  │   │  • web-server-1         ││
+│  │  - t3.micro                 │   │  • web-server-2         ││
+│  │  - Ubuntu 26.04 LTS         │   │  • app-server           ││
+│  │  - 8 GB gp3 volume          │   │  • ... (add more!)      ││
+│  │  - Key: soetintaung         │   │                         ││
+│  │  - Special tags             │   │  - t3.micro each        ││
+│  └─────────────────────────────┘   │  - Ubuntu 26.04 LTS     ││
+│                                    │  - 8 GB gp3 volume      ││
+│                                    │  - Key: soetintaung     ││
+│                                    └─────────────────────────┘│
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Benefits of Hybrid Style:
+✅ Special Servers (Kong) → Explicit modules for custom config
+✅ Common Servers (Web)   → Dynamic for_each, easy to add more
+✅ Best of both worlds    → Flexibility + Scalability
 ```
 
 ## Prerequisites

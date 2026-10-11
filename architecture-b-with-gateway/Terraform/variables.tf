@@ -1,6 +1,8 @@
-# Variables for EC2 deployment
+# Variables for EC2 deployment - Hybrid Style
 
+# ============================================
 # AWS Configuration
+# ============================================
 variable "aws_region" {
   description = "AWS region to deploy resources"
   type        = string
@@ -13,7 +15,9 @@ variable "aws_profile" {
   default     = "music"
 }
 
+# ============================================
 # Network Configuration
+# ============================================
 variable "vpc_id" {
   description = "Existing VPC ID"
   type        = string
@@ -26,7 +30,9 @@ variable "subnet_id" {
   default     = "subnet-9162c5f8"
 }
 
+# ============================================
 # Shared Configuration
+# ============================================
 variable "ami_id" {
   description = "AMI ID for EC2 instances"
   type        = string
@@ -45,7 +51,24 @@ variable "allowed_ssh_cidr" {
   default     = "0.0.0.0/0"
 }
 
-# Kong API Gateway Configuration
+# ============================================
+# Common Servers - Dynamic (for similar servers)
+# ============================================
+variable "common_servers" {
+  description = "Map of common servers with similar configuration"
+  type = map(object({
+    instance_type     = string
+    root_volume_size  = number
+    allowed_ports     = list(number)
+  }))
+  default = {}
+}
+
+# ============================================
+# Special Servers - Explicit (for unique configs)
+# ============================================
+
+# Kong API Gateway (Special - needs custom config)
 variable "kong_instance_name" {
   description = "Name tag for Kong API Gateway EC2 instance"
   type        = string
@@ -68,29 +91,4 @@ variable "kong_allowed_ports" {
   description = "List of ports to allow for Kong API Gateway"
   type        = list(number)
   default     = [22, 80, 443, 3000, 8000, 8001, 8443, 1337]
-}
-
-# Web Server Configuration
-variable "web_instance_name" {
-  description = "Name tag for Web Server EC2 instance"
-  type        = string
-  default     = "web-server"
-}
-
-variable "web_instance_type" {
-  description = "EC2 instance type for Web Server"
-  type        = string
-  default     = "t3.micro"
-}
-
-variable "web_root_volume_size" {
-  description = "Root volume size in GB for Web Server"
-  type        = number
-  default     = 8
-}
-
-variable "web_allowed_ports" {
-  description = "List of ports to allow for Web Server"
-  type        = list(number)
-  default     = [22, 80, 443]
 }

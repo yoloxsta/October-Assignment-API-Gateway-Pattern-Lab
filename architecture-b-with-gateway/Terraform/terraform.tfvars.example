@@ -1,20 +1,54 @@
 # Copy this file to terraform.tfvars and customize values
 # This configuration uses AWS profiles from ~/.aws/credentials
 
+# ============================================
 # AWS Configuration
+# ============================================
 aws_region  = "us-east-2"
 aws_profile = "music"  # Uses your existing profile from ~/.aws/credentials
 
+# ============================================
 # Network Configuration
+# ============================================
 vpc_id    = "vpc-1d815474"
 subnet_id = "subnet-9162c5f8"
 
+# ============================================
 # Shared Configuration
+# ============================================
 ami_id           = "ami-0e5497a77ef21b5ac"  # Ubuntu 26.04 LTS (us-east-2)
 key_name         = "soetintaung"
 allowed_ssh_cidr = "0.0.0.0/0"  # Change to YOUR_IP/32 for better security
 
-# Kong API Gateway Configuration
+# ============================================
+# COMMON SERVERS - Just add entries to create more!
+# ============================================
+common_servers = {
+  # Web Server 1
+  web-server-1 = {
+    instance_type     = "t3.micro"
+    root_volume_size  = 8
+    allowed_ports     = [22, 80, 443]
+  }
+
+  # Web Server 2 (uncomment to create)
+  # web-server-2 = {
+  #   instance_type     = "t3.micro"
+  #   root_volume_size  = 8
+  #   allowed_ports     = [22, 80, 443]
+  # }
+
+  # App Server (uncomment to create)
+  # app-server = {
+  #   instance_type     = "t3.small"
+  #   root_volume_size  = 10
+  #   allowed_ports     = [22, 80, 443, 3000]
+  # }
+}
+
+# ============================================
+# SPECIAL SERVERS - Kong API Gateway
+# ============================================
 kong_instance_name     = "kong-api-gateway"
 kong_instance_type     = "t3.micro"  # Change to t3.medium for production
 kong_root_volume_size  = 8
@@ -22,11 +56,3 @@ kong_root_volume_size  = 8
 # Ports: SSH(22), HTTP(80), HTTPS(443), Frontend(3000), Kong Proxy(8000), 
 #        Kong Admin(8001), Kong SSL(8443), Konga UI(1337)
 kong_allowed_ports = [22, 80, 443, 3000, 8000, 8001, 8443, 1337]
-
-# Web Server Configuration
-web_instance_name     = "web-server"
-web_instance_type     = "t3.micro"
-web_root_volume_size  = 8
-
-# Ports: SSH(22), HTTP(80), HTTPS(443)
-web_allowed_ports = [22, 80, 443]
